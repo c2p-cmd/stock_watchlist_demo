@@ -72,6 +72,11 @@ class Stock {
       isinNumber: map["isin_num"],
       faceValue: map["face_value"],
     );
+
+    @override
+  String toString() {
+    return "$symbol + $nameOfCompany";
+  }
 }
 
 
@@ -80,7 +85,7 @@ class StockBundle{
     StockBundle({this.stocks});
 
     factory StockBundle.fromJson(List<dynamic> parsedJson){
-      List<Stock> stocks = new List<Stock>();
+      List<Stock> stocks = <Stock>[];
 
       stocks = parsedJson.map((i) => Stock.fromJson(i)).toList();
 
