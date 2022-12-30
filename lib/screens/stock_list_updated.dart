@@ -6,6 +6,7 @@ import 'package:stock_watchlist/models/db_helper.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:http/http.dart' as http;
 
 List<Stock> favs = [];
 final db = StockDataBase();
@@ -14,7 +15,6 @@ void addStockToDb(Stock stock) async {
   await db.addStock(stock);
   //setupList();
 }
-
 
 Future<String> loadStockAsset() async {
   return await rootBundle.loadString('assets/stocks.json');
@@ -27,6 +27,16 @@ Future<List<Stock>> loadStocks() async {
   return s.stocks;
 }
 
+Future<String> fetchStock(String symbol) async {
+  final response = await http.get(Uri.parse(
+      'https://query1.finance.yahoo.com/v11/finance/quoteSummary/$symbol.ns?modules=financialData'));
+  if (response.statusCode == 200) {
+    return '\u{20B9} ${jsonDecode(response.body)['quoteSummary']['result'][0]['financialData']['currentPrice']['raw'].toString()}';
+  } else {
+    print(response.body);
+    throw Exception('Failed to load album');
+  }
+}
 
 class StockList extends StatefulWidget {
   @override
@@ -34,69 +44,59 @@ class StockList extends StatefulWidget {
 }
 
 class _StockListState extends State<StockList> {
-  void setupList() async {
+  Future setupList() async {
     var stocks = await db.fetchAll();
     setState(() {
       favs = stocks;
     });
-  } 
+  }
 
   @override
-  void initState(){
+  void initState() {
     super.initState();
     setupList();
   }
 
-  List<Widget> StackElements(BuildContext context){
+  List<Widget> StackElements(BuildContext context) {
     return <Widget>[
       AppBar(
         backgroundColor: Colors.black,
       ),
       Container(
-          height: 200,
-          decoration: BoxDecoration(
+        height: 200,
+        decoration: BoxDecoration(
             borderRadius: BorderRadius.only(
-              bottomLeft: Radius.circular(50),
-              bottomRight: Radius.circular(50)
-            ),
-            color: Colors.black
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: <Widget>[
-              Container(
-                child: Text(
-                  "Stocks",
+                bottomLeft: Radius.circular(50),
+                bottomRight: Radius.circular(50)),
+            color: Colors.black),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: <Widget>[
+            Container(
+              child: Text("Stocks",
                   style: new TextStyle(
-                    fontFamily: 'Avenir', 
-                    fontWeight: FontWeight.bold, 
-                    color: Colors.grey, 
-                    fontSize: 50
-                  )
-                ),
-              ),
-            ],
-          ),
+                      fontFamily: 'Avenir',
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey,
+                      fontSize: 50)),
+            ),
+          ],
         ),
-        Container(
-          height: 60,
-          width: 60,
-          margin: EdgeInsets.only(
-            top: 170,
-            left: MediaQuery.of(context).size.width * 0.5 - 30
-          ),
-          child: FloatingActionButton(
-            child: Icon(Icons.add),
-            onPressed: () {
-              showSearch(
-                context: context,
-                delegate: DataSearch()
-              );
-            },
-            backgroundColor: Colors.red,
-          ),
-        )
+      ),
+      Container(
+        height: 60,
+        width: 60,
+        margin: EdgeInsets.only(
+            top: 170, left: MediaQuery.of(context).size.width * 0.5 - 30),
+        child: FloatingActionButton(
+          child: Icon(Icons.add),
+          onPressed: () {
+            showSearch(context: context, delegate: DataSearch());
+          },
+          backgroundColor: Colors.red,
+        ),
+      )
     ];
   }
 
@@ -105,55 +105,78 @@ class _StockListState extends State<StockList> {
     return Scaffold(
       body: Column(
         children: <Widget>[
-          Stack(children: StackElements(context)),
+          Stack(
+            children: StackElements(context),
+          ),
           Expanded(
-            child: ListView.builder(
-              scrollDirection: Axis.vertical,
-              shrinkWrap: true,
-              itemCount: favs.length,
-              itemBuilder: (context, index){
-                return FlatButton(
-                  child: ListTile(
-                    title: Center(
-                      child: Text( favs[index].nameOfCompany.length > 30 ? favs[index].symbol : 
-                        favs[index].nameOfCompany,
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey,
-                          fontSize: 20
+            child: RefreshIndicator(
+              onRefresh: setupList,
+              child: ListView.builder(
+                scrollDirection: Axis.vertical,
+                shrinkWrap: true,
+                itemCount: favs.length,
+                itemBuilder: (context, index) {
+                  return OutlinedButton(
+                    child: ListTile(
+                      title: Center(
+                        child: FutureBuilder(
+                          future: fetchStock(favs[index].symbol),
+                          builder: (context, snapshot) {
+                            if (snapshot.hasData) {
+                              return Text(
+                                favs[index].nameOfCompany.length > 20
+                                    ? favs[index].symbol + " ${snapshot.data}"
+                                    : favs[index].nameOfCompany +
+                                        " ${snapshot.data}",
+                                style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black,
+                                    fontSize: 20),
+                              );
+                            }
+
+                            return Text(
+                              favs[index].nameOfCompany.length > 20
+                                  ? favs[index].symbol
+                                  : favs[index].nameOfCompany,
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey,
+                                  fontSize: 20),
+                            );
+                          },
                         ),
-                      )
+                      ),
                     ),
-                  ),
-                  onPressed: (){
-                    Navigator.of(context).push(
-                      new MaterialPageRoute(
-                        builder: (BuildContext context) => new WebPageView(stockName: favs[index].symbol),
-                      )
-                    );
-                  },
-                );
-              },
-            )
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        new MaterialPageRoute(
+                          builder: (BuildContext context) =>
+                              new WebPageView(stockName: favs[index].symbol),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
           )
         ],
-      )
-    );   
+      ),
+    );
   }
 }
 
-
-
-class DataSearch extends SearchDelegate<String>{
-  
-  Future<List<Stock>> items = loadStocks();
-  
+class DataSearch extends SearchDelegate<String> {
   @override
   List<Widget> buildActions(BuildContext context) {
     return [
-      IconButton(icon: Icon(Icons.clear), onPressed: () {
-        query = "";
-      },)
+      IconButton(
+        icon: Icon(Icons.clear),
+        onPressed: () {
+          query = "";
+        },
+      )
     ];
   }
 
@@ -179,17 +202,20 @@ class DataSearch extends SearchDelegate<String>{
   Widget buildSuggestions(BuildContext context) {
     return new FutureBuilder<List<Stock>>(
       future: loadStocks(),
-      builder: (context, snapshot){
-        if(snapshot.hasData){
+      builder: (context, snapshot) {
+        if (snapshot.hasData) {
           return new ListView.builder(
             itemCount: snapshot.data.length,
-            itemBuilder: (context, index){
-              if(query.length > 3 
-                && snapshot.data[index].nameOfCompany.toLowerCase().startsWith(query.toLowerCase())){
-                return FlatButton(
+            itemBuilder: (context, index) {
+              final stockName = snapshot.data[index].nameOfCompany.toLowerCase();
+              final stockSymbol = snapshot.data[index].symbol.toLowerCase();
+              final foundFlag = stockName.startsWith(query.toLowerCase()) || stockSymbol.startsWith(query.toLowerCase());
+              if (query.length > 3 && foundFlag) {
+                return OutlinedButton(
                   child: new ListTile(
                     title: Text(snapshot.data[index].nameOfCompany),
-                    leading: Icon(Icons.location_city),
+                    leading: Icon(Icons.ssid_chart),
+                    trailing: Text(snapshot.data[index].symbol.toString()),
                   ),
                   onPressed: () {
                     favs.add(snapshot.data[index]);
@@ -197,14 +223,20 @@ class DataSearch extends SearchDelegate<String>{
                     close(context, null);
                   },
                 );
-              }else{
-                return Column();
+              } else {
+                if (query.length < 3) {
+                  return Column();
+                } else if (index == 1) {
+                  return Center(child: Text("Stock not found"));
+                } else {
+                  return Center();
+                }
               }
             },
           );
-        }else if(snapshot.hasError){
+        } else if (snapshot.hasError) {
           return new Text("Snapshot Error");
-        }else{
+        } else {
           return Center(child: Text("Loading"));
         }
       },
